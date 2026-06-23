@@ -24,7 +24,7 @@ DIFFPUTER_URL="${DIFFPUTER_URL:-https://github.com/hengruizhang98/DiffPuter}"
 DP="${DP:-$REPO/DiffPuter}"
 DATASETS="${DATASETS:-magic bean letter shoppers}"
 SPLITS="${SPLITS:-0 1 2}"
-MASK="${MASK:-MCAR}"
+MASK="${MASK:-MAR}"          # MAR: DiffPuter's published Tables 7/8 cover it -> self-validating
 M="${M:-20}"; NFE="${NFE:-20}"; EPOCHS="${EPOCHS:-400}"
 BASELINE_EPOCHS="${BASELINE_EPOCHS:-0}"          # >0 shrinks baseline epochs (smoke only)
 CUDA="${CUDA:-cu121}"; TABCSDI_CUDA="${TABCSDI_CUDA:-cu117}"
@@ -112,7 +112,15 @@ fi
 # ---- 5. aggregate -----------------------------------------------------------
 python "$REPO/aggregate.py" --missflow "$REPO/results/missflow" \
        --diffputer-root "$DP" --out "$REPO/results/comparison.csv"
+
+# ---- 6. reproduction gate: do the baselines match the published tables? ------
+if [ -f "$REPO/published_reference.csv" ]; then
+  echo ">> reproduction gate vs DiffPuter ICLR'25 published Tables 7/8 ($MASK)"
+  python "$REPO/check_repro.py" --reproduced "$REPO/results/comparison.csv" \
+         --reference "$REPO/published_reference.csv" --tol "${REPRO_TOL:-0.10}" || true
+fi
 echo "==================================================================="
 echo " DONE.  Comparison: $REPO/results/comparison.csv"
-echo "   Cross-check MissFlow/baseline RMSE against DiffPuter's PUBLISHED table."
+echo "   PASS rows above = our harness reproduces the paper -> the setup (and MissFlow's"
+echo "   numbers on it) are trustworthy.  Run with MASK=MAR for the published-table gate."
 echo "==================================================================="

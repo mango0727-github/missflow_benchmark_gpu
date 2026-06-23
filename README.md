@@ -49,6 +49,25 @@ The DiffPuter authors split the baselines across environments; `run_all.sh` buil
   `datasets/`; we only trim their internal dataset/mask/split loops to our subset
   (`overlay/set_subset.py`).
 
+## Reproduction gate (this must pass first)
+
+Before the comparison means anything, the baselines must **reproduce their published
+numbers** on this harness — that is what proves the setup is correct (and that MissFlow's
+numbers on the *same* harness are credible). `run_all.sh` runs this automatically at the end:
+
+```
+PASS DiffPuter california MAR in rmse  pub=0.571 repro=0.577  1.1%
+PASS TabCSDI   california MAR in rmse  pub=1.116 repro=1.100  1.5%
+FAIL MissDiff  bean       MAR in rmse  pub=0.973 repro=1.500 54.2%   <- fix before trusting
+```
+
+- The reference (`published_reference.csv`) holds DiffPuter ICLR'25 **Table 7/8** numbers
+  (MAR, in-sample, RMSE+MAE) for DiffPuter / TabCSDI / MissDiff on our datasets. That is why
+  the default mask is **MAR** — it is the protocol with a full published numerical table.
+- `check_repro.py` averages our reproduced numbers over splits and flags PASS/FAIL by
+  relative tolerance (`REPRO_TOL`, default 10%). FAIL = our protocol differs from the paper
+  there; fix it before trusting any comparison.
+
 ## Files
 
 | file | what |
@@ -59,6 +78,8 @@ The DiffPuter authors split the baselines across environments; `run_all.sh` buil
 | `overlay/set_subset.py` | trim a baseline runner's internal loops to our datasets/masks/splits |
 | `overlay/patch_diffputer_uq.py` | additive patch: make DiffPuter emit the same coverage |
 | `aggregate.py` | merge MissFlow + DiffPuter + MissDiff + TabCSDI → `results/comparison.csv` |
+| `check_repro.py` | reproduction gate: harness numbers vs the published table (PASS/FAIL) |
+| `published_reference.csv` | DiffPuter ICLR'25 Table 7/8 numbers (MAR in-sample RMSE/MAE) |
 | `_vendor/` | vendored MissFlow (`missflow/`, `baselines/`) used by the runner |
 
 ## Notes / caveats

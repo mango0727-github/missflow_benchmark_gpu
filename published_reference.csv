@@ -1,0 +1,31 @@
+method,dataset,mask,sample,metric,value,source
+DiffPuter,california,MAR,in_sample,rmse,0.5712,DiffPuter ICLR25 Table8 (x1e-2)
+DiffPuter,letter,MAR,in_sample,rmse,0.4812,DiffPuter ICLR25 Table8
+DiffPuter,magic,MAR,in_sample,rmse,0.6729,DiffPuter ICLR25 Table8
+DiffPuter,bean,MAR,in_sample,rmse,0.3519,DiffPuter ICLR25 Table8
+DiffPuter,shoppers,MAR,in_sample,rmse,0.6011,DiffPuter ICLR25 Table8
+DiffPuter,california,MAR,in_sample,mae,0.3266,DiffPuter ICLR25 Table7
+DiffPuter,letter,MAR,in_sample,mae,0.3222,DiffPuter ICLR25 Table7
+DiffPuter,magic,MAR,in_sample,mae,0.2966,DiffPuter ICLR25 Table7
+DiffPuter,bean,MAR,in_sample,mae,0.1592,DiffPuter ICLR25 Table7
+DiffPuter,shoppers,MAR,in_sample,mae,0.3519,DiffPuter ICLR25 Table7
+TabCSDI,california,MAR,in_sample,rmse,1.1164,DiffPuter ICLR25 Table8
+TabCSDI,letter,MAR,in_sample,rmse,1.0027,DiffPuter ICLR25 Table8
+TabCSDI,magic,MAR,in_sample,rmse,1.0165,DiffPuter ICLR25 Table8
+TabCSDI,bean,MAR,in_sample,rmse,1.0115,DiffPuter ICLR25 Table8
+TabCSDI,shoppers,MAR,in_sample,rmse,1.0007,DiffPuter ICLR25 Table8
+TabCSDI,california,MAR,in_sample,mae,0.8317,DiffPuter ICLR25 Table7
+TabCSDI,letter,MAR,in_sample,mae,0.7742,DiffPuter ICLR25 Table7
+TabCSDI,magic,MAR,in_sample,mae,0.7693,DiffPuter ICLR25 Table7
+TabCSDI,bean,MAR,in_sample,mae,0.7534,DiffPuter ICLR25 Table7
+TabCSDI,shoppers,MAR,in_sample,mae,0.5853,DiffPuter ICLR25 Table7
+MissDiff,california,MAR,in_sample,rmse,2.5609,DiffPuter ICLR25 Table8
+MissDiff,letter,MAR,in_sample,rmse,0.7960,DiffPuter ICLR25 Table8
+MissDiff,magic,MAR,in_sample,rmse,0.9038,DiffPuter ICLR25 Table8
+MissDiff,bean,MAR,in_sample,rmse,0.9726,DiffPuter ICLR25 Table8
+MissDiff,shoppers,MAR,in_sample,rmse,6.7610,DiffPuter ICLR25 Table8
+MissDiff,california,MAR,in_sample,mae,1.1949,DiffPuter ICLR25 Table7
+MissDiff,letter,MAR,in_sample,mae,0.5669,DiffPuter ICLR25 Table7
+MissDiff,magic,MAR,in_sample,mae,0.5582,DiffPuter ICLR25 Table7
+MissDiff,bean,MAR,in_sample,mae,0.4562,DiffPuter ICLR25 Table7
+MissDiff,shoppers,MAR,in_sample,mae,0.4819,DiffPuter ICLR25 Table7
