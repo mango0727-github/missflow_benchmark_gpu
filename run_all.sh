@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# MissFlow x DiffPuter benchmark — official-code comparison, one entry point.
+# MissFlow vs the diffusion imputers (DiffPuter, MissDiff, TabCSDI) — official code.
 #
-# Clones the official DiffPuter repo (ICLR'25), overlays MissFlow + our per-cell
-# coverage eval, runs everything on the SAME datasets / masks / metric, aggregates
-# to one CSV. Two conda envs are used (DiffPuter needs python 3.12; MissFlow uses ours),
-# created and switched automatically.
+# Clones the official DiffPuter repo (ICLR'25, which bundles MissDiff + TabCSDI), runs
+# MissFlow + ALL THREE diffusion baselines on the SAME prepared datasets/masks/metric,
+# and aggregates accuracy (+ coverage where available) into one CSV. This closes the
+# accuracy/NFE/wall-clock comparison the paper names as the remaining gap.
 #
-#   ./run_all.sh                      # clone, prep data, run MissFlow, aggregate
-#   RUN_DIFFPUTER=1 ./run_all.sh      # ALSO run the DiffPuter baseline (long; for UQ)
-#   DATASETS="magic bean" SPLITS="0 1" ./run_all.sh
-#   CUDA=cu118 ./run_all.sh           # match the server's CUDA
+#   ./run_all.sh                          # full: prep data, MissFlow + 3 diffusion baselines
+#   RUN_DIFFUSION=0 ./run_all.sh          # MissFlow only
+#   DATASETS="magic bean" SPLITS="0 1" BASELINE_EPOCHS=200 ./run_all.sh   # quick smoke
+#   CUDA=cu118 ./run_all.sh               # match the server's CUDA
 #
-# Note: california is not auto-downloaded by DiffPuter (no UCI url); provide its data.csv
-# manually to include it. Defaults use the auto-downloaded UCI datasets we share.
+# Three conda envs are created/switched automatically (the DiffPuter authors split them):
+#   $ENV_NAME  : MissFlow (py3.11 + our torch)
+#   $DP_ENV    : DiffPuter + MissDiff (py3.12, modern torch)
+#   $TABCSDI_ENV: TabCSDI (py3.10, torch 1.13 / numpy 1.23 — its pinned old stack)
 # =============================================================================
 set -euo pipefail
 cd "$(dirname "$0")"; REPO="$(pwd)"
@@ -24,19 +26,21 @@ DATASETS="${DATASETS:-magic bean letter shoppers}"
 SPLITS="${SPLITS:-0 1 2}"
 MASK="${MASK:-MCAR}"
 M="${M:-20}"; NFE="${NFE:-20}"; EPOCHS="${EPOCHS:-400}"
-CUDA="${CUDA:-cu121}"
-ENV_NAME="${ENV_NAME:-missflow_bench}"      # our env (MissFlow)
-DP_ENV="${DP_ENV:-diffputer}"               # DiffPuter's env (python 3.12)
-RUN_DIFFPUTER="${RUN_DIFFPUTER:-0}"
+BASELINE_EPOCHS="${BASELINE_EPOCHS:-0}"          # >0 shrinks baseline epochs (smoke only)
+CUDA="${CUDA:-cu121}"; TABCSDI_CUDA="${TABCSDI_CUDA:-cu117}"
+ENV_NAME="${ENV_NAME:-missflow_bench}"
+DP_ENV="${DP_ENV:-diffputer}"
+TABCSDI_ENV="${TABCSDI_ENV:-tabcsdi}"
+RUN_DIFFUSION="${RUN_DIFFUSION:-1}"
 APPLY_UQ_PATCH="${APPLY_UQ_PATCH:-1}"
+NSPLITS=$(echo $SPLITS | wc -w)
 
-# ---- conda: find it, or install Miniforge (same as before) ------------------
+# ---- conda: find it (or install Miniforge) ----------------------------------
 locate_conda() {
   command -v conda >/dev/null 2>&1 && return 0
   if command -v module >/dev/null 2>&1; then
     for m in anaconda anaconda3 miniconda miniconda3 miniforge conda; do
-      module load "$m" >/dev/null 2>&1 || true
-      command -v conda >/dev/null 2>&1 && return 0
+      module load "$m" >/dev/null 2>&1 || true; command -v conda >/dev/null 2>&1 && return 0
     done
   fi
   for b in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" /opt/conda; do
@@ -47,51 +51,68 @@ locate_conda() {
 locate_conda || { echo "!! conda not found; load it (module load anaconda) and retry"; exit 2; }
 source "$(conda info --base)/etc/profile.d/conda.sh"
 ensure_env() { conda env list | awk '{print $1}' | grep -qx "$1" || conda create -y -n "$1" python="$2" pip; }
+subset() {  # $1=file ; trims its internal dataset/mask/split loops to our subset
+  local ep=""; [ "$BASELINE_EPOCHS" != "0" ] && ep="--epochs $BASELINE_EPOCHS"
+  python "$REPO/overlay/set_subset.py" "$1" --datasets "$DATASETS" --masks "$MASK" --splits "$NSPLITS" $ep
+}
 
 # ---- 1. clone DiffPuter + overlay our files ---------------------------------
 [ -d "$DP/.git" ] || git clone "$DIFFPUTER_URL" "$DP"
 cp "$REPO/overlay/uq_eval.py" "$REPO/overlay/main_missflow.py" "$DP/"
-if [ "$APPLY_UQ_PATCH" = "1" ]; then
-  python "$REPO/overlay/patch_diffputer_uq.py" "$DP/main.py" || true
-fi
+[ "$APPLY_UQ_PATCH" = "1" ] && python "$REPO/overlay/patch_diffputer_uq.py" "$DP/main.py" || true
 
-# ---- 2. DiffPuter env + prepare datasets/masks (their code, their env) -------
-echo ">> [DiffPuter env] preparing datasets/masks"
-ensure_env "$DP_ENV" 3.12
-conda activate "$DP_ENV"
-pip install -q -r "$DP/requirements/diffputer.txt" || pip install -q pandas numpy scikit-learn scipy openpyxl xlrd tqdm requests
+# ---- 2. DiffPuter env + prepare the shared datasets/masks (their code) -------
+echo ">> [diffputer env] preparing shared datasets/masks"
+ensure_env "$DP_ENV" 3.12; conda activate "$DP_ENV"
+pip install -q -r "$DP/requirements/diffputer.txt" 2>/dev/null || \
+  pip install -q pandas numpy scikit-learn scipy openpyxl xlrd tqdm requests pyyaml torch
 ( cd "$DP" && [ -d datasets/magic/masks ] || python download_and_process.py )
 conda deactivate
 
-# ---- 3. MissFlow env + run MissFlow on the prepared data --------------------
-echo ">> [MissFlow env] running MissFlow"
-ensure_env "$ENV_NAME" 3.11
-conda activate "$ENV_NAME"
+# ---- 3. MissFlow (our env) on the prepared data -----------------------------
+echo ">> [missflow env] running MissFlow"
+ensure_env "$ENV_NAME" 3.11; conda activate "$ENV_NAME"
 pip install -q numpy pandas scikit-learn scipy
 python -c "import torch" 2>/dev/null || pip install -q torch --index-url "https://download.pytorch.org/whl/${CUDA}"
-export MISSFLOW_PKG="$REPO/_vendor"
-mkdir -p "$REPO/results/missflow"
+export MISSFLOW_PKG="$REPO/_vendor"; mkdir -p "$REPO/results/missflow"
 for ds in $DATASETS; do for s in $SPLITS; do
-  echo ">> MissFlow  dataset=$ds  split=$s"
+  echo ">> MissFlow  $ds  split $s"
   ( cd "$DP" && python main_missflow.py --dataname "$ds" --split_idx "$s" --mask "$MASK" \
        --num_trials "$M" --n_steps "$NFE" --epochs "$EPOCHS" --out "$REPO/results/missflow" )
 done; done
+conda deactivate
 
-# ---- 4. (optional) run the DiffPuter baseline (long; gives its coverage) -----
-if [ "$RUN_DIFFPUTER" = "1" ]; then
-  echo ">> [DiffPuter env] running DiffPuter baseline (this is slow)"
-  conda deactivate; conda activate "$DP_ENV"
+# ---- 4. diffusion baselines (official code) ---------------------------------
+if [ "$RUN_DIFFUSION" = "1" ]; then
+  echo ">> [diffputer env] DiffPuter + MissDiff"
+  conda activate "$DP_ENV"
   for ds in $DATASETS; do for s in $SPLITS; do
-    ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" \
-         --num_trials "$M" --num_steps 50 )
+    echo ">> DiffPuter $ds split $s"
+    ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" )
   done; done
-  conda deactivate; conda activate "$ENV_NAME"
+  subset "$DP/baselines/Missdiff_SDE/Missdiff_benchmark.py"
+  echo ">> MissDiff (runs the subset internally)"
+  ( cd "$DP/baselines/Missdiff_SDE" && python Missdiff_benchmark.py ) || echo "!! MissDiff failed (check its env)"
+  conda deactivate
+
+  echo ">> [tabcsdi env] TabCSDI (old torch stack)"
+  ensure_env "$TABCSDI_ENV" 3.10; conda activate "$TABCSDI_ENV"
+  pip install -q -r "$DP/baselines/TabCSDI/requirements.txt" 2>/dev/null || true
+  python -c "import torch" 2>/dev/null || \
+    pip install -q torch==1.13.0 --index-url "https://download.pytorch.org/whl/${TABCSDI_CUDA}" || \
+    pip install -q torch==1.13.0
+  subset "$DP/baselines/TabCSDI/csdi_benchmark.py"
+  echo ">> TabCSDI (runs the subset internally)"
+  ( cd "$DP/baselines/TabCSDI" && python csdi_benchmark.py --config uci.yaml --nsample "$M" ) \
+    || echo "!! TabCSDI failed (check its old-torch env / CUDA tag TABCSDI_CUDA)"
+  conda deactivate
+  conda activate "$ENV_NAME"
 fi
 
 # ---- 5. aggregate -----------------------------------------------------------
 python "$REPO/aggregate.py" --missflow "$REPO/results/missflow" \
-       --diffputer "$DP/results" --out "$REPO/results/comparison.csv"
+       --diffputer-root "$DP" --out "$REPO/results/comparison.csv"
 echo "==================================================================="
 echo " DONE.  Comparison: $REPO/results/comparison.csv"
-echo "   (cross-check the MissFlow RMSE against DiffPuter's PUBLISHED table.)"
+echo "   Cross-check MissFlow/baseline RMSE against DiffPuter's PUBLISHED table."
 echo "==================================================================="
