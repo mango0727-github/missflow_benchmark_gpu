@@ -1,0 +1,15 @@
+# Conda environment for the MissFlow GPU benchmark (school Linux server).
+# Used automatically by run_benchmark.sh. PyTorch is installed SEPARATELY by the
+# script so the CUDA build can be picked with one knob (CUDA=cu121 / cu118 / cu124
+# / cpu); see the README. Keeping torch out of here avoids CUDA-mismatch headaches.
+name: missflow_bench
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy>=1.24
+  - pandas>=1.5
+  - scikit-learn>=1.2
+  - scipy>=1.10
+  - openpyxl>=3.1

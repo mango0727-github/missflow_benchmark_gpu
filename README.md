@@ -16,13 +16,34 @@ cd missflow_benchmark_gpu
 model, baselines) is vendored in `_vendor/`, so you only clone this one repo. No second
 repo, no `MISSFLOW_REPO` to set.
 
-The script creates `.venv`, installs `requirements.txt`, runs a fast **smoke test**, then
-the full run, saving `results/benchmark_<timestamp>.csv`.
+The script **auto-detects conda** (uses a `missflow_bench` conda env from
+`environment.yml`); if conda is not on `PATH` it falls back to a python `.venv`. It then
+installs deps + the matching PyTorch build, runs a fast **smoke test**, and finally the
+full run, saving `results/benchmark_<timestamp>.csv`.
+
+### School GPU server (conda)
+
+```bash
+module load anaconda          # or miniconda — whatever your server uses
+./run_benchmark.sh            # conda env is created and activated automatically
+```
+
+Match the server's CUDA with one knob (check `nvidia-smi` for the driver/CUDA version):
+
+```bash
+CUDA=cu121 ./run_benchmark.sh   # default; also cu118 / cu124
+```
+
+> Needs outbound internet to fetch conda/pip wheels (`download.pytorch.org`). If the node
+> is offline, build the env once on a login node, then `SKIP_INSTALL=1 ./run_benchmark.sh`.
 
 Common overrides (env vars):
 
 ```bash
-SMOKE=1 ./run_benchmark.sh                          # sanity check only
+SMOKE=1 ./run_benchmark.sh                          # sanity check only (fast)
+SKIP_INSTALL=1 ./run_benchmark.sh                   # reuse the built env (faster reruns)
+USE_CONDA=0 ./run_benchmark.sh                      # force a python venv instead of conda
+ENV_NAME=missflow_bench CUDA=cu118 ./run_benchmark.sh
 DEVICE=cpu ./run_benchmark.sh                       # no GPU (slow; for testing)
 METHODS=missflow,diffputer DATASETS=california ./run_benchmark.sh
 MECHANISM=mar SEEDS=0,1,2 M=20 ./run_benchmark.sh
