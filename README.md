@@ -16,16 +16,18 @@ cd missflow_benchmark_gpu
 model, baselines) is vendored in `_vendor/`, so you only clone this one repo. No second
 repo, no `MISSFLOW_REPO` to set.
 
-The script **auto-detects conda** (uses a `missflow_bench` conda env from
-`environment.yml`); if conda is not on `PATH` it falls back to a python `.venv`. It then
-installs deps + the matching PyTorch build, runs a fast **smoke test**, and finally the
-full run, saving `results/benchmark_<timestamp>.csv`.
+**Zero setup.** The script finds conda by itself — it checks `PATH`, then HPC
+`module load`, then the usual install dirs (`~/miniforge3`, `~/anaconda3`, `/opt/conda`, …).
+If there is no conda anywhere, it installs Miniforge into `~/miniforge3` automatically
+(one-time); if even that is not possible it falls back to a python `.venv`. It then creates
+the `missflow_bench` env, installs deps + the matching PyTorch build, runs a fast **smoke
+test**, and finally the full run, saving `results/benchmark_<timestamp>.csv`. You do **not**
+need to `module load` or activate anything yourself.
 
-### School GPU server (conda)
+### School GPU server
 
 ```bash
-module load anaconda          # or miniconda — whatever your server uses
-./run_benchmark.sh            # conda env is created and activated automatically
+./run_benchmark.sh            # that's it — conda is found (or installed) automatically
 ```
 
 Match the server's CUDA with one knob (check `nvidia-smi` for the driver/CUDA version):
