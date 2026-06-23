@@ -1,7 +1,0 @@
-# Pure-Python deps. PyTorch is installed separately by run_benchmark.sh with the
-# right CUDA build (CUDA=cu121 by default; CUDA=cpu to test). See the README.
-numpy>=1.24
-pandas>=1.5
-scikit-learn>=1.2
-scipy>=1.10
-openpyxl>=3.1
