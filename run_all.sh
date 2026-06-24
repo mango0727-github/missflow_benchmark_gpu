@@ -11,6 +11,7 @@
 #   RUN_DIFFUSION=0 ./run_all.sh          # MissFlow only
 #   DATASETS="magic bean" SPLITS="0 1" BASELINE_EPOCHS=200 ./run_all.sh   # quick smoke
 #   CUDA=cu118 ./run_all.sh               # match the server's CUDA
+#   AUTO_STOP="runpodctl stop pod $RUNPOD_POD_ID" ./run_all.sh   # self-stop when done (rented cloud)
 #
 # Three conda envs are created/switched automatically (the DiffPuter authors split them):
 #   $ENV_NAME  : MissFlow (py3.11 + our torch)
@@ -124,3 +125,12 @@ echo " DONE.  Comparison: $REPO/results/comparison.csv"
 echo "   PASS rows above = our harness reproduces the paper -> the setup (and MissFlow's"
 echo "   numbers on it) are trustworthy.  Run with MASK=MAR for the published-table gate."
 echo "==================================================================="
+
+# ---- self-stop when finished (avoid idle billing on a rented cloud GPU) ------
+# Set AUTO_STOP to the command that stops THIS instance, e.g. on RunPod:
+#   AUTO_STOP="runpodctl stop pod $RUNPOD_POD_ID" ./run_all.sh
+if [ -n "${AUTO_STOP:-}" ]; then
+  echo ">> finished; AUTO_STOP -> $AUTO_STOP"
+  sleep 5
+  eval "$AUTO_STOP" || echo "!! AUTO_STOP command failed; stop the pod manually to avoid charges."
+fi
