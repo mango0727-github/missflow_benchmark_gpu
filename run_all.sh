@@ -136,7 +136,8 @@ if [ "$RUN_DIFFUSION" = "1" ]; then
     || echo "!! TabCSDI: no CUDA torch 1.13 (runs on CPU; only 100 epochs so tolerable)"
   subset "$DP/baselines/TabCSDI/csdi_benchmark.py"
   echo ">> TabCSDI (runs the subset internally)"
-  ( cd "$DP/baselines/TabCSDI" && python csdi_benchmark.py --config uci.yaml --nsample "$M" ) \
+  TCDEV="cuda:0"; [ "$CUDA" = "cpu" ] && TCDEV="cpu"   # TabCSDI's --device DEFAULTS to cpu!
+  ( cd "$DP/baselines/TabCSDI" && python csdi_benchmark.py --config uci.yaml --nsample "$M" --device "$TCDEV" ) \
     || echo "!! TabCSDI failed (check its old-torch env / CUDA tag TABCSDI_CUDA)"
   conda deactivate
   conda activate "$ENV_NAME"
