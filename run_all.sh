@@ -86,6 +86,10 @@ pip install -q -r "$DP/requirements/diffputer.txt" 2>/dev/null || \
 python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null \
   || { echo ">> diffputer env: torch is CPU-only -> installing CUDA build ($CUDA)"; \
        pip install -q --force-reinstall --no-deps torch --index-url "https://download.pytorch.org/whl/${CUDA}"; }
+# california is not a UCI set -> prep it from StatLib housing (matches their 10-col json)
+case " $DATASETS " in *" california "*)
+  [ -d "$DP/datasets/california/masks" ] || python "$REPO/overlay/prep_california.py" "$DP" ;;
+esac
 ( cd "$DP" && [ -d datasets/magic/masks ] || python download_and_process.py ) \
   || echo ">> data-prep returned nonzero (usually just the optional california step) -- verifying"
 for ds in $DATASETS; do
