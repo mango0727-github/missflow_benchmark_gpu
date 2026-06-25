@@ -80,7 +80,14 @@ echo ">> [diffputer env] preparing shared datasets/masks"
 ensure_env "$DP_ENV" 3.12; conda activate "$DP_ENV"
 pip install -q -r "$DP/requirements/diffputer.txt" 2>/dev/null || \
   pip install -q pandas numpy scikit-learn scipy openpyxl xlrd tqdm requests pyyaml torch
-( cd "$DP" && [ -d datasets/magic/masks ] || python download_and_process.py )
+( cd "$DP" && [ -d datasets/magic/masks ] || python download_and_process.py ) \
+  || echo ">> data-prep returned nonzero (usually just the optional california step) -- verifying"
+for ds in $DATASETS; do
+  [ -d "$DP/datasets/$ds/masks" ] || {
+    echo "!! dataset '$ds' was not prepared (no masks/). california has no UCI url --"
+    echo "   drop in $DP/datasets/california/data.csv to use it; defaults are magic/bean/letter/shoppers."
+    exit 5; }
+done
 conda deactivate
 
 # ---- 3. MissFlow (our env) on the prepared data -----------------------------
