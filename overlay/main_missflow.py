@@ -48,8 +48,11 @@ def main():
     device = f"cuda:{a.gpu}" if (a.gpu != -1 and torch.cuda.is_available()) else "cpu"
     mask_type = "MNAR_logistic_T2" if a.mask == "MNAR" else a.mask
 
-    (train_X, test_X, train_mask, test_mask, train_num, test_num,
-     train_cat_idx, test_cat_idx, _ext_tr, _ext_te, cat_bin_num) = \
+    # load_dataset returns the ORIGINAL mask (all columns) AND the EXTENDED mask that
+    # matches train_X's [numerical | binary-cat] layout. mean_std / the MissFlow mask / Xobs
+    # need the EXTENDED one; get_eval + the numerical-miss slice need the ORIGINAL one.
+    (train_X, test_X, ori_train_mask, ori_test_mask, train_num, test_num,
+     train_cat_idx, test_cat_idx, train_mask, test_mask, cat_bin_num) = \
         load_dataset(a.dataname, a.split_idx, mask_type, a.ratio)
 
     with open(f"datasets/Info/{a.dataname}.json") as f:
@@ -74,8 +77,8 @@ def main():
 
     rows = []
     for tag, X_, M_obs_, Xobs_, full_mask_, cat_idx_ in [
-        ("in_sample",     Xtr, Mtr_obs, Xobs_tr, train_mask, train_cat_idx),
-        ("out_of_sample", Xte, Mte_obs, Xobs_te, test_mask,  test_cat_idx),
+        ("in_sample",     Xtr, Mtr_obs, Xobs_tr, ori_train_mask, train_cat_idx),
+        ("out_of_sample", Xte, Mte_obs, Xobs_te, ori_test_mask,  test_cat_idx),
     ]:
         t1 = time.time()
         draws = np.asarray(imp.impute(Xobs_, M_obs_, a.num_trials), dtype=np.float64)  # (T,n,d), std/2
