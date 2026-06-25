@@ -83,6 +83,9 @@ echo ">> [diffputer env] preparing shared datasets/masks"
 ensure_env "$DP_ENV" 3.12; conda activate "$DP_ENV"
 pip install -q -r "$DP/requirements/diffputer.txt" 2>/dev/null || \
   pip install -q pandas numpy scikit-learn scipy openpyxl xlrd tqdm requests pyyaml torch
+python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null \
+  || { echo ">> diffputer env: torch is CPU-only -> installing CUDA build ($CUDA)"; \
+       pip install -q --force-reinstall --no-deps torch --index-url "https://download.pytorch.org/whl/${CUDA}"; }
 ( cd "$DP" && [ -d datasets/magic/masks ] || python download_and_process.py ) \
   || echo ">> data-prep returned nonzero (usually just the optional california step) -- verifying"
 for ds in $DATASETS; do
@@ -128,9 +131,9 @@ if [ "$RUN_DIFFUSION" = "1" ]; then
   echo ">> [tabcsdi env] TabCSDI (old torch stack)"
   ensure_env "$TABCSDI_ENV" 3.10; conda activate "$TABCSDI_ENV"
   pip install -q -r "$DP/baselines/TabCSDI/requirements.txt" 2>/dev/null || true
-  python -c "import torch" 2>/dev/null || \
-    pip install -q torch==1.13.0 --index-url "https://download.pytorch.org/whl/${TABCSDI_CUDA}" || \
-    pip install -q torch==1.13.0
+  python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null \
+    || pip install -q --force-reinstall --no-deps torch==1.13.0 --index-url "https://download.pytorch.org/whl/${TABCSDI_CUDA}" \
+    || echo "!! TabCSDI: no CUDA torch 1.13 (runs on CPU; only 100 epochs so tolerable)"
   subset "$DP/baselines/TabCSDI/csdi_benchmark.py"
   echo ">> TabCSDI (runs the subset internally)"
   ( cd "$DP/baselines/TabCSDI" && python csdi_benchmark.py --config uci.yaml --nsample "$M" ) \
