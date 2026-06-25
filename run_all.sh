@@ -74,6 +74,9 @@ subset() {  # $1=file ; trims its internal dataset/mask/split loops to our subse
 [ -d "$DP/.git" ] || git clone "$DIFFPUTER_URL" "$DP"
 cp "$REPO/overlay/uq_eval.py" "$REPO/overlay/main_missflow.py" "$DP/"
 [ "$APPLY_UQ_PATCH" = "1" ] && python "$REPO/overlay/patch_diffputer_uq.py" "$DP/main.py" || true
+# DiffPuter/MissDiff were written for an older torch; newer torch (>=2.2, pulled in by
+# py3.12) removed the ReduceLROnPlateau 'verbose' kwarg -> strip it. Idempotent.
+find "$DP" -name "*.py" -exec sed -i '/ReduceLROnPlateau/s/,[[:space:]]*verbose=[A-Za-z0-9]*//g' {} + 2>/dev/null || true
 
 # ---- 2. DiffPuter env + prepare the shared datasets/masks (their code) -------
 echo ">> [diffputer env] preparing shared datasets/masks"
@@ -96,7 +99,10 @@ ensure_env "$ENV_NAME" 3.11; conda activate "$ENV_NAME"
 pip install -q numpy pandas scikit-learn scipy
 python -c "import torch" 2>/dev/null || pip install -q torch --index-url "https://download.pytorch.org/whl/${CUDA}"
 export MISSFLOW_PKG="$REPO/_vendor"; mkdir -p "$REPO/results/missflow"
+mt="$MASK"; [ "$MASK" = "MNAR" ] && mt="MNAR_logistic_T2"
 for ds in $DATASETS; do for s in $SPLITS; do
+  out="$REPO/results/missflow/missflow_${ds}_${mt}_30_${s}.csv"
+  [ -f "$out" ] && { echo ">> MissFlow $ds split $s -- already done, skip"; continue; }
   echo ">> MissFlow  $ds  split $s"
   ( cd "$DP" && python main_missflow.py --dataname "$ds" --split_idx "$s" --mask "$MASK" \
        --num_trials "$M" --n_steps "$NFE" --epochs "$EPOCHS" --out "$REPO/results/missflow" )
