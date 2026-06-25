@@ -120,9 +120,11 @@ conda deactivate
 if [ "$RUN_DIFFUSION" = "1" ]; then
   echo ">> [diffputer env] DiffPuter + MissDiff"
   conda activate "$DP_ENV"
-  # DiffPuter is CLI-driven (not loop-subset); for a smoke also shrink its epochs + EM iters
+  # DiffPuter is CLI-driven (not loop-subset). Smoke shrinks epochs + EM iters; for a full
+  # run set DP_MAX_ITER (repo default 10 UNDER-converges -> ~25-30 reaches the published RMSE).
   DP_ITER_ARG=""
-  if [ "$BASELINE_EPOCHS" != "0" ]; then subset "$DP/main.py"; DP_ITER_ARG="--max_iter 1"; fi
+  if [ "$BASELINE_EPOCHS" != "0" ]; then subset "$DP/main.py"; DP_ITER_ARG="--max_iter 1"
+  elif [ -n "${DP_MAX_ITER:-}" ]; then DP_ITER_ARG="--max_iter $DP_MAX_ITER"; fi
   for ds in $DATASETS; do for s in $SPLITS; do
     echo ">> DiffPuter $ds split $s"
     ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" $DP_ITER_ARG )
