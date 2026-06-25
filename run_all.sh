@@ -113,9 +113,12 @@ conda deactivate
 if [ "$RUN_DIFFUSION" = "1" ]; then
   echo ">> [diffputer env] DiffPuter + MissDiff"
   conda activate "$DP_ENV"
+  # DiffPuter is CLI-driven (not loop-subset); for a smoke also shrink its epochs + EM iters
+  DP_ITER_ARG=""
+  if [ "$BASELINE_EPOCHS" != "0" ]; then subset "$DP/main.py"; DP_ITER_ARG="--max_iter 1"; fi
   for ds in $DATASETS; do for s in $SPLITS; do
     echo ">> DiffPuter $ds split $s"
-    ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" )
+    ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" $DP_ITER_ARG )
   done; done
   subset "$DP/baselines/Missdiff_SDE/Missdiff_benchmark.py"
   echo ">> MissDiff (runs the subset internally)"
