@@ -49,7 +49,20 @@ locate_conda() {
   done
   return 1
 }
-locate_conda || { echo "!! conda not found; load it (module load anaconda) and retry"; exit 2; }
+bootstrap_miniforge() {                          # fresh box (e.g. RunPod): install conda
+  local dir="$HOME/miniforge3" arch url tmp
+  [ -x "$dir/bin/conda" ] && { export PATH="$dir/bin:$PATH"; return 0; }
+  echo ">> no conda found -- installing Miniforge into $dir (one-time, ~1-2 min)"
+  arch="$(uname -m)"
+  url="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-${arch}.sh"
+  tmp="$(mktemp /tmp/miniforge.XXXXXX.sh)"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$url" -o "$tmp" || return 1
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$tmp" "$url" || return 1
+  else echo "!! need curl or wget to install conda"; return 1; fi
+  bash "$tmp" -b -p "$dir" >/dev/null 2>&1 || { echo "!! Miniforge install failed"; return 1; }
+  rm -f "$tmp"; export PATH="$dir/bin:$PATH"; command -v conda >/dev/null 2>&1
+}
+locate_conda || bootstrap_miniforge || { echo "!! conda not found and could not install it"; exit 2; }
 source "$(conda info --base)/etc/profile.d/conda.sh"
 ensure_env() { conda env list | awk '{print $1}' | grep -qx "$1" || conda create -y -n "$1" python="$2" pip; }
 subset() {  # $1=file ; trims its internal dataset/mask/split loops to our subset
