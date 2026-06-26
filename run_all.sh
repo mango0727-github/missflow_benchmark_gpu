@@ -33,6 +33,9 @@ ENV_NAME="${ENV_NAME:-missflow_bench}"
 DP_ENV="${DP_ENV:-diffputer}"
 TABCSDI_ENV="${TABCSDI_ENV:-tabcsdi}"
 RUN_DIFFUSION="${RUN_DIFFUSION:-1}"
+RUN_DIFFPUTER="${RUN_DIFFPUTER:-1}"   # per-baseline on/off (e.g. RUN_MISSDIFF=0 to skip MissDiff)
+RUN_MISSDIFF="${RUN_MISSDIFF:-1}"
+RUN_TABCSDI="${RUN_TABCSDI:-1}"
 APPLY_UQ_PATCH="${APPLY_UQ_PATCH:-1}"
 NSPLITS=$(echo $SPLITS | wc -w)
 
@@ -122,30 +125,36 @@ if [ "$RUN_DIFFUSION" = "1" ]; then
   conda activate "$DP_ENV"
   # DiffPuter is CLI-driven (not loop-subset). Smoke shrinks epochs + EM iters; for a full
   # run set DP_MAX_ITER (repo default 10 UNDER-converges -> ~25-30 reaches the published RMSE).
-  DP_ITER_ARG=""
-  if [ "$BASELINE_EPOCHS" != "0" ]; then subset "$DP/main.py"; DP_ITER_ARG="--max_iter 1"
-  elif [ -n "${DP_MAX_ITER:-}" ]; then DP_ITER_ARG="--max_iter $DP_MAX_ITER"; fi
-  for ds in $DATASETS; do for s in $SPLITS; do
-    echo ">> DiffPuter $ds split $s"
-    ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" $DP_ITER_ARG )
-  done; done
-  subset "$DP/baselines/Missdiff_SDE/Missdiff_benchmark.py"
-  echo ">> MissDiff (runs the subset internally)"
-  ( cd "$DP/baselines/Missdiff_SDE" && python Missdiff_benchmark.py ) || echo "!! MissDiff failed (check its env)"
+  if [ "$RUN_DIFFPUTER" = "1" ]; then
+    DP_ITER_ARG=""
+    if [ "$BASELINE_EPOCHS" != "0" ]; then subset "$DP/main.py"; DP_ITER_ARG="--max_iter 1"
+    elif [ -n "${DP_MAX_ITER:-}" ]; then DP_ITER_ARG="--max_iter $DP_MAX_ITER"; fi
+    for ds in $DATASETS; do for s in $SPLITS; do
+      echo ">> DiffPuter $ds split $s"
+      ( cd "$DP" && python main.py --dataname "$ds" --split_idx "$s" --mask "$MASK" $DP_ITER_ARG )
+    done; done
+  fi
+  if [ "$RUN_MISSDIFF" = "1" ]; then
+    subset "$DP/baselines/Missdiff_SDE/Missdiff_benchmark.py"
+    echo ">> MissDiff (runs the subset internally)"
+    ( cd "$DP/baselines/Missdiff_SDE" && python Missdiff_benchmark.py ) || echo "!! MissDiff failed (check its env)"
+  fi
   conda deactivate
 
-  echo ">> [tabcsdi env] TabCSDI (old torch stack)"
-  ensure_env "$TABCSDI_ENV" 3.10; conda activate "$TABCSDI_ENV"
-  pip install -q -r "$DP/baselines/TabCSDI/requirements.txt" 2>/dev/null || true
-  python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null \
-    || pip install -q --force-reinstall --no-deps torch==1.13.0 --index-url "https://download.pytorch.org/whl/${TABCSDI_CUDA}" \
-    || echo "!! TabCSDI: no CUDA torch 1.13 (runs on CPU; only 100 epochs so tolerable)"
-  subset "$DP/baselines/TabCSDI/csdi_benchmark.py"
-  echo ">> TabCSDI (runs the subset internally)"
-  TCDEV="cuda:0"; [ "$CUDA" = "cpu" ] && TCDEV="cpu"   # TabCSDI's --device DEFAULTS to cpu!
-  ( cd "$DP/baselines/TabCSDI" && python csdi_benchmark.py --config uci.yaml --nsample "$M" --device "$TCDEV" ) \
-    || echo "!! TabCSDI failed (check its old-torch env / CUDA tag TABCSDI_CUDA)"
-  conda deactivate
+  if [ "$RUN_TABCSDI" = "1" ]; then
+    echo ">> [tabcsdi env] TabCSDI (old torch stack)"
+    ensure_env "$TABCSDI_ENV" 3.10; conda activate "$TABCSDI_ENV"
+    pip install -q -r "$DP/baselines/TabCSDI/requirements.txt" 2>/dev/null || true
+    python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null \
+      || pip install -q --force-reinstall --no-deps torch==1.13.0 --index-url "https://download.pytorch.org/whl/${TABCSDI_CUDA}" \
+      || echo "!! TabCSDI: no CUDA torch 1.13 (runs on CPU; only 100 epochs so tolerable)"
+    subset "$DP/baselines/TabCSDI/csdi_benchmark.py"
+    echo ">> TabCSDI (runs the subset internally)"
+    TCDEV="cuda:0"; [ "$CUDA" = "cpu" ] && TCDEV="cpu"   # TabCSDI's --device DEFAULTS to cpu!
+    ( cd "$DP/baselines/TabCSDI" && python csdi_benchmark.py --config uci.yaml --nsample "$M" --device "$TCDEV" ) \
+      || echo "!! TabCSDI failed (check its old-torch env / CUDA tag TABCSDI_CUDA)"
+    conda deactivate
+  fi
   conda activate "$ENV_NAME"
 fi
 

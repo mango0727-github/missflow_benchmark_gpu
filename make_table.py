@@ -1,36 +1,38 @@
 """Final paper comparison table: MissFlow (our harness, reproduction-validated) vs the
 diffusion imputers' PUBLISHED numbers (DiffPuter ICLR'25 Table 8). MissFlow numbers are
-averaged over splits from our run; baseline numbers are read from published_reference.csv.
+averaged over splits from our run; baseline numbers come from published_reference.csv.
 The harness's reproduction was validated separately (TabCSDI reproduces; DiffPuter's EM
-converges to its published RMSE), which is what makes comparing to published numbers valid.
+converges to its published RMSE), which is what makes comparing to published valid.
 
   python make_table.py --reproduced results/comparison.csv --reference published_reference.csv
+  python make_table.py --baselines DiffPuter,TabCSDI,MissDiff   # include MissDiff too
 
-Prints a console + Markdown + LaTeX table (rows = datasets; MissFlow RMSE/coverage + each
-baseline's published RMSE; NFE in the header). Lowest RMSE per row is marked.
+Default baselines are DiffPuter,TabCSDI (MissDiff is a high-variance baseline, handled
+separately). Prints console + Markdown + LaTeX; lowest RMSE per dataset is marked.
 """
 from __future__ import annotations
-import argparse, csv
+import argparse, csv, os
 from collections import defaultdict
 
 NFE = {"MissFlow": 20, "DiffPuter": 50, "TabCSDI": 100, "MissDiff": 50}
-BASELINES = ["DiffPuter", "TabCSDI", "MissDiff"]
 
 
 def _mean(xs):
-    xs = [x for x in xs if x not in ("", None)]
-    return sum(map(float, xs)) / len(xs) if xs else None
+    xs = [float(x) for x in xs if x not in ("", None)]
+    return sum(xs) / len(xs) if xs else None
 
 
-def load_missflow(fp, sample):
-    rmse, cov = defaultdict(list), defaultdict(list)
+def load_run(fp, sample):
+    """All methods we actually ran: {method: {dataset: mean_rmse}} + MissFlow coverage."""
+    rmse, cov = defaultdict(lambda: defaultdict(list)), defaultdict(list)
     for r in csv.DictReader(open(fp)):
-        if r.get("method") != "MissFlow" or r.get("sample") != sample:
+        if r.get("sample") != sample:
             continue
-        if r.get("rmse"): rmse[r["dataset"]].append(r["rmse"])
-        if r.get("cov95_cal"): cov[r["dataset"]].append(r["cov95_cal"])
-    return ({d: _mean(v) for d, v in rmse.items()},
-            {d: _mean(v) for d, v in cov.items()})
+        m = r.get("method", "")
+        if r.get("rmse"): rmse[m][r["dataset"]].append(r["rmse"])
+        if m == "MissFlow" and r.get("cov95_cal"): cov[r["dataset"]].append(r["cov95_cal"])
+    run = {m: {d: _mean(v) for d, v in dd.items()} for m, dd in rmse.items()}
+    return run, {d: _mean(v) for d, v in cov.items()}
 
 
 def load_published(fp, sample):
@@ -43,67 +45,69 @@ def load_published(fp, sample):
     return out
 
 
-def fmt(x, best=False):
-    if x is None: return "  -  "
-    s = f"{x:.3f}"
-    return f"**{s}**" if best else s
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reproduced", default="results/comparison.csv")
     ap.add_argument("--reference", default="published_reference.csv")
     ap.add_argument("--sample", default="in_sample")
+    ap.add_argument("--baselines", default="DiffPuter,TabCSDI")
     ap.add_argument("--out", default="results/comparison_table.md")
     a = ap.parse_args()
+    baselines = [b for b in a.baselines.split(",") if b]
 
-    mf_rmse, mf_cov = load_missflow(a.reproduced, a.sample)
+    run, mf_cov = load_run(a.reproduced, a.sample)
     pub = load_published(a.reference, a.sample)
-    datasets = sorted(set(mf_rmse) | {d for m in pub.values() for d in m})
+    datasets = sorted(set(run.get("MissFlow", {})) | {d for b in baselines for d in pub.get(b, {})})
+    methods = ["MissFlow"] + baselines
 
-    header = (f"Imputation RMSE ({a.sample}, MAR 30%). MissFlow = ours (reproduction-validated "
-              f"harness); baselines = DiffPuter ICLR'25 published. NFE: MissFlow {NFE['MissFlow']}, "
-              f"DiffPuter {NFE['DiffPuter']}, TabCSDI {NFE['TabCSDI']}, MissDiff {NFE['MissDiff']}.")
-    cols = ["dataset", "MissFlow", "cov95", "DiffPuter", "TabCSDI", "MissDiff"]
+    nfe_str = ", ".join(f"{m} {NFE.get(m,'?')}" for m in methods)
+    header = (f"Imputation RMSE ({a.sample}, MAR 30%). MissFlow = ours; a baseline uses OUR run if "
+              f"present else its DiffPuter ICLR'25 published value. NFE: {nfe_str}.")
+
+    def rmse_of(m, ds):                       # our run first, then the published value
+        v = run.get(m, {}).get(ds)
+        if v is not None: return v
+        return None if m == "MissFlow" else pub.get(m, {}).get(ds)
 
     rows = []
     for ds in datasets:
-        vals = {"MissFlow": mf_rmse.get(ds)}
-        for b in BASELINES:
-            vals[b] = pub.get(b, {}).get(ds)
+        vals = {m: rmse_of(m, ds) for m in methods}
         numeric = {k: v for k, v in vals.items() if v is not None}
         best = min(numeric, key=numeric.get) if numeric else None
         rows.append((ds, vals, mf_cov.get(ds), best))
 
-    # ---- console + markdown ----
-    md = [f"<!-- {header} -->", "",
-          "| Dataset | MissFlow | cov95 | DiffPuter | TabCSDI | MissDiff |",
-          "|---|---|---|---|---|---|"]
+    def fnum(v): return f"{v:.3f}" if v is not None else "--"
+
+    def cell(v, bold):
+        if v is None: return "--"
+        return f"**{v:.3f}**" if bold else f"{v:.3f}"
+
+    # ---- console ----
     print("\n" + header + "\n")
-    print(f"{'dataset':<12}{'MissFlow':>10}{'cov':>7}{'DiffPuter':>11}{'TabCSDI':>9}{'MissDiff':>10}")
-    print("-" * 60)
+    head = f"{'dataset':<12}{'MissFlow':>10}{'cov':>6}" + "".join(f"{m:>11}" for m in baselines)
+    print(head); print("-" * len(head))
     for ds, vals, cov, best in rows:
         covs = f"{cov:.2f}" if cov is not None else "-"
-        print(f"{ds:<12}{fmt(vals['MissFlow']).replace('*',''):>10}{covs:>7}"
-              f"{fmt(vals['DiffPuter']).replace('*',''):>11}{fmt(vals['TabCSDI']).replace('*',''):>9}"
-              f"{fmt(vals['MissDiff']).replace('*',''):>10}" + ("   (MissFlow best)" if best == "MissFlow" else ""))
-        md.append(f"| {ds} | {fmt(vals['MissFlow'], best=='MissFlow')} | {covs} | "
-                  f"{fmt(vals['DiffPuter'], best=='DiffPuter')} | {fmt(vals['TabCSDI'], best=='TabCSDI')} | "
-                  f"{fmt(vals['MissDiff'], best=='MissDiff')} |")
+        line = f"{ds:<12}{fnum(vals['MissFlow']):>10}{covs:>6}"
+        line += "".join(f"{fnum(vals[b]):>11}" for b in baselines)
+        print(line + ("   <- MissFlow best" if best == "MissFlow" else ""))
 
-    # ---- LaTeX ----
-    tex = ["\\begin{tabular}{lccccc}", "\\toprule",
-           "Dataset & MissFlow & cov$_{95}$ & DiffPuter & TabCSDI & MissDiff \\\\",
-           "\\midrule"]
+    # ---- markdown + LaTeX ----
+    md = [f"<!-- {header} -->", "",
+          "| Dataset | MissFlow | cov95 | " + " | ".join(baselines) + " |",
+          "|---" * (3 + len(baselines)) + "|"]
+    tex = ["\\begin{tabular}{lcc" + "c" * len(baselines) + "}", "\\toprule",
+           "Dataset & MissFlow & cov$_{95}$ & " + " & ".join(baselines) + " \\\\", "\\midrule"]
     for ds, vals, cov, best in rows:
-        def t(k):
-            v = vals[k]; s = "--" if v is None else f"{v:.3f}"
-            return f"\\textbf{{{s}}}" if best == k and v is not None else s
-        covs = "--" if cov is None else f"{cov:.2f}"
-        tex.append(f"{ds} & {t('MissFlow')} & {covs} & {t('DiffPuter')} & {t('TabCSDI')} & {t('MissDiff')} \\\\")
+        covs = f"{cov:.2f}" if cov is not None else "--"
+        md.append(f"| {ds} | {cell(vals['MissFlow'], best=='MissFlow')} | {covs} | "
+                  + " | ".join(cell(vals[b], best == b) for b in baselines) + " |")
+        tcell = lambda m: ("--" if vals[m] is None else
+                           (f"\\textbf{{{vals[m]:.3f}}}" if best == m else f"{vals[m]:.3f}"))
+        tex.append(f"{ds} & {tcell('MissFlow')} & {covs} & "
+                   + " & ".join(tcell(b) for b in baselines) + " \\\\")
     tex += ["\\bottomrule", "\\end{tabular}"]
 
-    import os
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     open(a.out, "w").write("\n".join(md) + "\n\n```latex\n" + "\n".join(tex) + "\n```\n")
     print(f"\nwrote markdown + LaTeX -> {a.out}")
