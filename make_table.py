@@ -50,7 +50,9 @@ def main():
     ap.add_argument("--reproduced", default="results/comparison.csv")
     ap.add_argument("--reference", default="published_reference.csv")
     ap.add_argument("--sample", default="in_sample")
-    ap.add_argument("--baselines", default="DiffPuter,TabCSDI")
+    ap.add_argument("--baselines", default="DiffPuter,TabCSDI,MissDiff")
+    ap.add_argument("--prefer-run", action="store_true",
+                    help="use OUR run for a baseline if we ran it (default: always published)")
     ap.add_argument("--out", default="results/comparison_table.md")
     a = ap.parse_args()
     baselines = [b for b in a.baselines.split(",") if b]
@@ -61,13 +63,17 @@ def main():
     methods = ["MissFlow"] + baselines
 
     nfe_str = ", ".join(f"{m} {NFE.get(m,'?')}" for m in methods)
-    header = (f"Imputation RMSE ({a.sample}, MAR 30%). MissFlow = ours; a baseline uses OUR run if "
-              f"present else its DiffPuter ICLR'25 published value. NFE: {nfe_str}.")
+    src = "OUR run if present, else published" if a.prefer_run else "DiffPuter ICLR'25 published"
+    header = (f"Imputation RMSE ({a.sample}, MAR 30%). MissFlow = ours (reproduction-validated "
+              f"harness); baselines = {src}. NFE: {nfe_str}.")
 
-    def rmse_of(m, ds):                       # our run first, then the published value
-        v = run.get(m, {}).get(ds)
-        if v is not None: return v
-        return None if m == "MissFlow" else pub.get(m, {}).get(ds)
+    def rmse_of(m, ds):
+        if m == "MissFlow":
+            return run.get(m, {}).get(ds)
+        if a.prefer_run:                      # opt-in: use our run for a baseline if we ran it
+            v = run.get(m, {}).get(ds)
+            if v is not None: return v
+        return pub.get(m, {}).get(ds)         # default: the published value
 
     rows = []
     for ds in datasets:
